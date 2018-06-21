@@ -1,6 +1,6 @@
 import boto3
 from ec2_metadata import ec2_metadata
-from swvars import VPNIDS
+from swvars import VPNIDS, LOCAL_ROUTES
 import xml.etree.ElementTree as ET
 from subprocess import call
 
@@ -24,9 +24,28 @@ def make_vpn(x):
 			try:
 					VPN = ec2.describe_vpn_connections(VpnConnectionIds=[x])
 					
+					CGWID = VPN['VpnConnections'][0]['CustomerGatewayId']
+					
+					# Make sure the CGW of all VPNs are the same. If there is a VPN that does not use first CGWID mentioned, then pass it
+					if os.path.isfile(TRACKFILE) == False:
+						with open(TRACKFILE,'wb') as f:
+							f.write(CGWID)
+							
+							CGWASN = ec2.describe_customer_gateways(
+							CustomerGatewayIds = [CGWID]
+							 )
+							CGWASN = CGWASN['CustomerGateways'][0]['BgpAsn']
+					
+							return CGWASN
+					else:
+						with open(TRACKFILE,'r') as f:
+							if CGWID != f.read():
+								pass
+					
 					# Determine if VPN is static or dynamic routing type
 					if VPN['VpnConnections'][0]['Options']['StaticRoutesOnly'] == False:
 						z = 'dynamic'
+						
 					else:
 						# The VPN is static, and we need to determine if its VGW is attached to a VPC to retrieve that VPC's CIDR (for local static route)
 						VGWID = VPN['VpnConnections'][0]['VpnGatewayId']
@@ -158,7 +177,10 @@ def make_vpn(x):
 				pass
 
 for v in VPNIDS:
-	make_vpn(v)
-
+	CGWASN = make_vpn(v)
+	
+with open(BGPDCONF,'wb') as f:
+	f.write('router bgp ' + CGWASN + '\n')
+	f.write('        network ' + LOCAL_ROUTES + '\n')
 # Start the strongswan service back up again
 call(["service","strongswan","start"])

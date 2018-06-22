@@ -435,9 +435,6 @@
 							},
 							"STARTA": {
 								"command": "/usr/bin/python /etc/strongswan/configure.py"
-							},
-							"STARTZ": {
-								"command": "/opt/aws/bin/cfn-hup --verbose"
 							}
 						}
 				}

@@ -39,8 +39,6 @@ def make_vpn(x):
 				CustomerGatewayIds = [CGWID]
 				 )
 		CGWASN = CGWASN['CustomerGateways'][0]['BgpAsn']
-
-		return CGWASN
 					
 		# Determine if VPN is static or dynamic routing type
 		if VPN['VpnConnections'][0]['Options']['StaticRoutesOnly'] == False:
@@ -173,6 +171,7 @@ def make_vpn(x):
 			NetworkInterfaceId=ENI
 			)
 			
+		return CGWASN
 	except Exception as e:
 		raise e 
 		pass

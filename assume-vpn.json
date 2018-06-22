@@ -430,11 +430,11 @@
 								"env": { "LOCAL_ROUTES": {"Ref": "VpcCidr"}}
 							},
 							"REGION":{
-								"command": "echo REGION=\"$REGION\" >> /etc/strongswan/swvars.py",
+								"command": "echo REGION=\"'$REGION'\" >> /etc/strongswan/swvars.py",
 								"env": { "REGION": {"Ref": "AWS::Region"}}
 							},
-							"STARTA": {
-								"command": "/usr/bin/python /etc/strongswan/configure.py"
+							"START":{
+								"command": "/opt/aws/bin/cfn-hup --verbose"
 							}
 						}
 				}
@@ -461,17 +461,17 @@
 						} ],
 			  "UserData": { "Fn::Base64" : { "Fn::Join" : ["", [
 				 "#!/bin/bash -xe\n",
-				 "curl https://s3.amazonaws.com/cloudformation-examples/enable-epel-on-amazon-linux-ami > /etc/yum.repos.d/epel.repo\n",
-				 "chmod 000644 /etc/yum.repos.d/epel.repo\n",
+				 "yum-config-manager --enable epel\n",
 				 "yum install strongswan -y\n",
 				 "yum install quagga -y\n",
 				 "pip install boto3\n",
-				 "pip install ec2-medata\n",
+				 "pip install ec2-metadata\n",
 				 "# Install the files and packages from the metadata\n",
 				 "/opt/aws/bin/cfn-init -v ",
 				 "         --stack ", { "Ref" : "AWS::StackName" },
 				 "         --resource CgwEc2 ",
-				 "         --region ", { "Ref" : "AWS::Region" }, "\n"
+				 "         --region ", { "Ref" : "AWS::Region" }, "\n",
+				 "/usr/bin/python /etc/strongswan/configure.py\n"
 			]]}}
 		}
       }

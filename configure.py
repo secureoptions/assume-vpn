@@ -1,9 +1,16 @@
 import boto3
 from ec2_metadata import ec2_metadata
-from swvars import VPNIDS, LOCAL_ROUTES, REGION, IKEVERSION, IKELIFETIME, IKEPARAMETERS, ESPPARAMETERS, ESPLIFETIME, MARGIN, FUZZ
+from swvars import VPNIDS, LOCAL_ROUTES, REGION, IKEVERSION, IKELIFETIME, IKEPARAMETERS, ESPPARAMETERS, ESPLIFETIME, MARGIN, FUZZ, APIMODEL
 import xml.etree.ElementTree as ET
 from subprocess import call
 import os
+ec2 = boto3.client('ec2',region_name=REGION)
+s3 = boto3.resource('s3', region_name=REGION)
+
+# Enable API support for TGW
+APIMODEL = APIMODEL.split('/')
+s3.meta.client.download_file(APIMODEL[0], '/'.join(APIMODEL[1:len(APIMODEL)]), '/tmp/service-2.json')
+call(["aws", "configure", "add-model", "--service-model", "file:///tmp/service-2.json", "--service-name", "ec2"])
 
 # Stop the strongswan service so we can update its configuration smoothly
 call(["service","strongswan","stop"])
@@ -21,7 +28,6 @@ TRACKFILE='/etc/strongswan/.vpntrackfile'
 
 def make_vpn(x):
 	try:
-		ec2 = boto3.client('ec2',region_name=REGION)
 		VPN = ec2.describe_vpn_connections(VpnConnectionIds=[x])
 		
 		CGWID = VPN['VpnConnections'][0]['CustomerGatewayId']
@@ -45,28 +51,44 @@ def make_vpn(x):
 			z = 'dynamic'
 			
 		else:
-			# The VPN is static, and we need to determine if its VGW is attached to a VPC to retrieve that VPC's CIDR (for local static route)
-			VGWID = VPN['VpnConnections'][0]['VpnGatewayId']
+			try:
+				# The VPN is static, and we need to determine if its VGW or TGW is attached to a VPC to retrieve that VPC's CIDR (for local static route)
+				VGWID = VPN['VpnConnections'][0]['VpnGatewayId']
+				
+				try: 		
+						VPCID = ec2.describe_vpn_gateways(
+							VpnGatewayIds=[VGWID]
+							)
+						VPCID = VPCID['VpnGateways'][0]['VpcAttachments'][0]['VpcId']
+						
+						CIDR = ec2.describe_vpcs(
+							VpcIds=[VPCID]
+							)
+						CIDR = CIDR['Vpcs'][0]['CidrBlock']
+						
+						z = CIDR
+						
+				except IndexError as e:
+					if e == "list index out of range":
+						# There is no attached VPC to this VGW. use the following route as a placeholder
+						z = '127.0.0.10/32'
 			
-			try: 		
-					VPCID = ec2.describe_vpn_gateways(
-						VpnGatewayIds=[VGWID]
-						)
-					VPCID = VPCID['VpnGateways'][0]['VpcAttachments'][0]['VpcId']
-					
-					CIDR = ec2.describe_vpcs(
-						VpcIds=[VPCID]
-						)
-					CIDR = CIDR['Vpcs'][0]['CidrBlock']
-					
-					z = CIDR
-					
-			except IndexError as e:
-				if e == "list index out of range":
-					# There is no attached VPC to this VGW. use the following route as a placeholder
-					z = '127.0.0.10/32'
+			except:
+				TGWID = VPN['VpnConnections'][0]['TransitGatewayId']
+				try: 
+					ATTACHMENTS = ec2.describe_transit_gateway_attachments()
+					z = ""
+					for attachment in ATTACHMENTS['TransitGatewayAttachments']:
+						if attachment['TransitGatewayId'] == TGWID:
+							VPCROUTE = ec2.describe_vpcs(
+									VpcIds=[attachment['VpcId']]
+									)
+							z = z + (str(VPCROUTE['Vpcs'][0]['CidrBlock'])) + ","
+				except:
+					print 'no attachments'
+				
+				
 			
-		
 		# Get customer gateway config
 		DOWNLOADCONFIG = VPN['VpnConnections'][0]['CustomerGatewayConfiguration']
 		
@@ -178,7 +200,6 @@ def make_vpn(x):
 
 for v in VPNIDS:
 	CGWASN = make_vpn(v)
-	print CGWASN
 	
 with open(BGPDCONF,'wb') as f:
 	f.write('router bgp ' + str(CGWASN) + '\n')

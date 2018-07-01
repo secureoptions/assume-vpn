@@ -7,7 +7,7 @@
 					"Label": {
 						"default": "Configuration Details"
 					},
-					"Parameters": ["Type", "SshKey", "SshSource", "VpcCidr", "SubnetCidr","Vpns", "IkeVersion", "IkeParameters", "IkeLifetime", "EspParameters", "EspLifetime", "Margin", "Fuzz" ]
+					"Parameters": ["Type", "SshKey", "SshSource", "VpcCidr", "SubnetCidr","Vpns", "IkeVersion", "IkeParameters", "IkeLifetime", "EspParameters", "EspLifetime", "Margin", "Fuzz", "ApiModel" ]
 				}],
 
 			"ParameterLabels": {
@@ -49,11 +49,14 @@
 				},
 				"Fuzz": {
 					"default": "Rekey Fuzz"
-				}
+				},
+				"ApiModel": {
+					"default": "S3Bucket to service-2.json"
 					
 			}
 
 		}
+	}
 	},
 	
 	"Parameters":{
@@ -134,6 +137,11 @@
 			"Description": "Rekey-fuzz value. The deployed CGW may have several VPNs on it, so 25% randomization is recommended in that case",
 			"Type": "String",
 			"Default": "50%"
+			},
+		"ApiModel": {
+			"Description": "The S3 bucket/object that contains the API model json for TGW support. This must be a S3 bucket in the same region and account as this CF stack",
+			"Type": "String",
+			"Default": "S3bucket/path/to/object"
 			}
 	},
 	
@@ -303,6 +311,8 @@
 								"ec2:DescribeVpnConnections",
 								"ec2:DescribeVpnGateways",
 								"ec2:DescribeVpcs",
+								"s3:GetObject",
+								"s3:HeadBucket",
 								"cloudformation:DescribeStackResources",
 								"cloudformation:DescribeStackResource"
 							],
@@ -347,6 +357,12 @@
 			"Metadata" : {
 			     "AWS::CloudFormation::Init" : {
 					"config" : {
+						"packages": {
+							"yum": {
+								"strongswan": [],
+								"quagga": []
+								}
+							},
 						"files":{
 							"/etc/cfn/cfn-hup.conf" : {
 							  "content" : { "Fn::Join" : ["", [
@@ -378,7 +394,20 @@
 							  "ospf6d=no\n",
 							  "ripd=no\n",
 							  "ripngd=no\n"
-							]]}
+							]]},
+							  "mode": "000644",
+							  "owner": "quagga",
+							  "group": "quagga"
+							},
+							"/etc/quagga/zebra.conf": {
+							  "content": { "Fn::Join": ["", [
+							  "hostname cgw-tester\n",
+							  "interface eth0\n"
+							  ]]},
+							  "mode": "000644",
+							  "owner": "quagga",
+							  "group": "quagga"
+							  
 							},
 							"/etc/strongswan/configure.py":{
 							 "source": "https://raw.githubusercontent.com/secureoptions/assume-vpn/master/configure.py",
@@ -433,6 +462,10 @@
 								"command": "echo REGION=\"'$REGION'\" >> /etc/strongswan/swvars.py",
 								"env": { "REGION": {"Ref": "AWS::Region"}}
 							},
+							"APIMODEL": {
+								"command": "echo APIMODEL=\"'$APIMODEL'\" >> /etc/strongswan/swvars.py",
+								"env": {"APIMODEL": {"Ref": "ApiModel"}}
+							},
 							"START":{
 								"command": "/opt/aws/bin/cfn-hup --verbose"
 							}
@@ -462,8 +495,6 @@
 			  "UserData": { "Fn::Base64" : { "Fn::Join" : ["", [
 				 "#!/bin/bash -xe\n",
 				 "yum-config-manager --enable epel\n",
-				 "yum install strongswan -y\n",
-				 "yum install quagga -y\n",
 				 "pip install boto3\n",
 				 "pip install ec2-metadata\n",
 				 "# Install the files and packages from the metadata\n",

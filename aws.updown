@@ -67,7 +67,11 @@ add_route() {
 		sudo service zebra restart
 	else
 		# if not using BGP, create a static route. ASN here is the CIDR really
-		sudo ip route add ${ASN} dev ${TUNNEL_NAME}
+		IFS=',' read -r -a ROUTES <<< "$ASN"
+		for i in "${ROUTES[@]}"
+		do
+			sudo ip route add $i dev ${TUNNEL_NAME}
+		done
 	fi
 	sudo iptables -t mangle -A FORWARD -o ${TUNNEL_NAME} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 	sudo iptables -t mangle -A INPUT -p esp -s ${TUNNEL_REMOTE_ENDPOINT} -d ${TUNNEL_LOCAL_ENDPOINT} -j MARK --set-xmark ${TUNNEL_MARK}
@@ -85,7 +89,11 @@ cleanup_settings() {
 		sudo service bgpd restart
 		sudo service zebra restart
 	else
-		sudo ip route del ${ASN} dev ${TUNNEL_NAME}
+		IFS=',' read -r -a ROUTES <<< "$ASN"
+		for i in "${ROUTES[@]}"
+		do
+			sudo ip route del $i dev ${TUNNEL_NAME}
+		done
 	fi
     iptables -t mangle -D FORWARD -o ${TUNNEL_NAME} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 	iptables -t mangle -D INPUT -p esp -s ${TUNNEL_REMOTE_ENDPOINT} -d ${TUNNEL_LOCAL_ENDPOINT} -j MARK --set-xmark ${TUNNEL_MARK}

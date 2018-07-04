@@ -7,10 +7,14 @@ import os
 ec2 = boto3.client('ec2',region_name=REGION)
 s3 = boto3.resource('s3', region_name=REGION)
 
-# Enable API support for TGW
-APIMODEL = APIMODEL.split('/')
-s3.meta.client.download_file(APIMODEL[0], '/'.join(APIMODEL[1:len(APIMODEL)]), '/tmp/service-2.json')
-call(["aws", "configure", "add-model", "--service-model", "file:///tmp/service-2.json", "--service-name", "ec2"])
+try:
+	# Enable API support for TGW
+	APIMODEL = APIMODEL.split('/')
+	s3.meta.client.download_file(APIMODEL[0], '/'.join(APIMODEL[1:len(APIMODEL)]), '/tmp/service-2.json')
+	call(["aws", "configure", "add-model", "--service-model", "file:///tmp/service-2.json", "--service-name", "ec2"])
+except:
+	print "User's model was either inaccessible or non-existent"
+	continue
 
 # Stop the strongswan service so we can update its configuration smoothly
 call(["service","strongswan","stop"])

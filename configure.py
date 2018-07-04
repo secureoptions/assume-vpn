@@ -14,7 +14,6 @@ try:
 	call(["aws", "configure", "add-model", "--service-model", "file:///tmp/service-2.json", "--service-name", "ec2"])
 except:
 	print "User's model was either inaccessible or non-existent"
-	continue
 
 # Stop the strongswan service so we can update its configuration smoothly
 call(["service","strongswan","stop"])
